@@ -4,12 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node scripts/build.mjs",
+    "start": "node server.js",
     "test": "node --test tests/*.mjs",
-    "verify:dist": "node scripts/verify-dist.mjs"
+    "smoke:local": "node scripts/local-smoke.mjs"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=18"
   },
   "devDependencies": {}
 }

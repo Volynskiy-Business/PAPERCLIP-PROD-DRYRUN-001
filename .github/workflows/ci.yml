@@ -24,9 +24,6 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Build
-        run: npm run build
-
-      - name: Verify artifact
-        run: npm run verify:dist
+      - name: Local smoke
+        run: npm run smoke:local
 

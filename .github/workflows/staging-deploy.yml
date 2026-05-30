@@ -1,0 +1,146 @@
+name: Staging Deploy
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "docs/**"
+  workflow_dispatch:
+    inputs:
+      deploy_ref:
+        description: Commit SHA, branch, or tag to deploy
+        required: false
+        default: ""
+      expected_release:
+        description: Expected release after deployment
+        required: true
+        default: "0.1.0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dryrun-staging
+  cancel-in-progress: false
+
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve ref
+        id: ref
+        run: |
+          if [ -n "${{ github.event.inputs.deploy_ref }}" ]; then
+            echo "ref=${{ github.event.inputs.deploy_ref }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "${{ github.event.inputs.expected_release }}" ]; then
+            echo "expected_release=${{ github.event.inputs.expected_release }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "expected_release=0.1.0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.ref.outputs.ref }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Local smoke
+        run: npm run smoke:local
+
+      - name: Configure SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.DRYRUN_DEPLOY_SSH_KEY }}" > ~/.ssh/dryrun_deploy_key
+          chmod 600 ~/.ssh/dryrun_deploy_key
+          ssh-keyscan -H "${{ secrets.DRYRUN_SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Package release
+        run: |
+          tar \
+            --exclude .git \
+            --exclude node_modules \
+            --exclude data \
+            -czf /tmp/paperclip-prod-dryrun-001.tgz .
+
+      - name: Upload release
+        run: |
+          scp -i ~/.ssh/dryrun_deploy_key /tmp/paperclip-prod-dryrun-001.tgz \
+            "${{ secrets.DRYRUN_SSH_USER }}@${{ secrets.DRYRUN_SSH_HOST }}:/tmp/paperclip-prod-dryrun-001-${{ steps.ref.outputs.ref }}.tgz"
+
+      - name: Activate release
+        run: |
+          ssh -i ~/.ssh/dryrun_deploy_key "${{ secrets.DRYRUN_SSH_USER }}@${{ secrets.DRYRUN_SSH_HOST }}" \
+            "DEPLOY_REF='${{ steps.ref.outputs.ref }}' EXPECTED_RELEASE='${{ steps.ref.outputs.expected_release }}' DRYRUN_API_TOKEN='${{ secrets.DRYRUN_API_TOKEN }}' bash -s" <<'REMOTE'
+          set -euo pipefail
+          APP_ROOT=/opt/paperclip-prod-dryrun-001
+          RELEASE_DIR="$APP_ROOT/releases/$DEPLOY_REF"
+          mkdir -p "$RELEASE_DIR" "$APP_ROOT/shared/data"
+          tar -xzf "/tmp/paperclip-prod-dryrun-001-${DEPLOY_REF}.tgz" -C "$RELEASE_DIR"
+          cd "$RELEASE_DIR"
+          npm ci --omit=dev
+          cat > /etc/paperclip-prod-dryrun-001.env <<ENV
+          PORT=45129
+          DRYRUN_API_TOKEN=${DRYRUN_API_TOKEN}
+          RELEASE_VERSION=${EXPECTED_RELEASE}
+          ENV
+          cat > /etc/systemd/system/paperclip-prod-dryrun-001.service <<SERVICE
+          [Unit]
+          Description=Paperclip Product Dry Run 001
+          After=network.target
+
+          [Service]
+          Type=simple
+          WorkingDirectory=${RELEASE_DIR}
+          EnvironmentFile=/etc/paperclip-prod-dryrun-001.env
+          ExecStart=/usr/bin/node server.js
+          Restart=always
+          RestartSec=2
+
+          [Install]
+          WantedBy=multi-user.target
+          SERVICE
+          ln -sfn "$RELEASE_DIR" "$APP_ROOT/current"
+          systemctl daemon-reload
+          systemctl enable paperclip-prod-dryrun-001.service
+          systemctl restart paperclip-prod-dryrun-001.service
+          sleep 2
+          curl -fsS http://127.0.0.1:45129/healthz
+          REMOTE
+
+      - name: Hosted smoke
+        env:
+          STAGING_URL: ${{ secrets.DRYRUN_STAGING_URL }}
+          DRYRUN_API_TOKEN: ${{ secrets.DRYRUN_API_TOKEN }}
+          EXPECTED_RELEASE: ${{ steps.ref.outputs.expected_release }}
+        run: |
+          set -euo pipefail
+          curl -fsS "$STAGING_URL/healthz" | tee /tmp/health.json
+          grep "\"release\":\"$EXPECTED_RELEASE\"" /tmp/health.json
+          curl -fsS "$STAGING_URL/recruiting/prospects" | grep "Recruiting prospect slice is staged"
+          status=$(curl -sS -o /tmp/unauthorized.json -w '%{http_code}' "$STAGING_URL/api/prospects")
+          test "$status" = "401"
+          create_body=$(curl -fsS -X POST "$STAGING_URL/api/prospects" \
+            -H "content-type: application/json" \
+            -H "x-dryrun-token: $DRYRUN_API_TOKEN" \
+            -d '{"name":"Hosted Smoke Candidate","source":"github-actions"}')
+          echo "$create_body" | tee /tmp/create.json
+          prospect_id=$(node -e "const fs=require('fs'); const body=JSON.parse(fs.readFileSync('/tmp/create.json','utf8')); console.log(body.prospect.id)")
+          curl -fsS -X PATCH "$STAGING_URL/api/prospects/$prospect_id" \
+            -H "content-type: application/json" \
+            -H "x-dryrun-token: $DRYRUN_API_TOKEN" \
+            -d '{"status":"contacted"}' | tee /tmp/update.json
+          grep "contacted" /tmp/update.json
