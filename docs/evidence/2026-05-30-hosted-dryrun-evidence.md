@@ -2,8 +2,9 @@
 
 **Date:** 2026-05-30  
 **Repository:** https://github.com/Volynskiy-Business/PAPERCLIP-PROD-DRYRUN-001  
-**Staging target:** https://volynskiy-business.github.io/PAPERCLIP-PROD-DRYRUN-001/  
-**Deploy credential model:** GitHub Actions repository-scoped `GITHUB_TOKEN`.
+**Static staging target:** https://volynskiy-business.github.io/PAPERCLIP-PROD-DRYRUN-001/  
+**Executable staging target:** http://206.189.62.186:45129  
+**Deploy credential model:** GitHub Actions repository secrets with a dedicated SSH deploy key and staged API token.
 
 ## Evidence Chain
 
@@ -13,6 +14,10 @@
 | Forward deploy | `23b5cb7bd0f831439cbda278e25c2cb3bb442c75` | CI run `26693957124`; Staging Pages run `26693957144`; staging returned `data-release="0.2.0"` | Success |
 | Rollback deploy | `7e6a3dc3d17ab211d601692ac0862608dadbe64b` | CI run `26693974077`; Staging Pages run `26693974088`; staging returned `data-release="0.1.0"` | Success |
 | Rollback proof | `7e6a3dc3d17ab211d601692ac0862608dadbe64b` | Rollback Proof run `26693986201` with `expected_release=0.1.0` | Success |
+| Executable slice deploy | `6b19d6e` | CI run `26694331637`; Staging Deploy run `26694331647`; hosted smoke covered health, UI, auth rejection, create, update | Success |
+| Executable deploy automation fix | `b17c43d` | CI run `26694402385`; Staging Deploy run `26694402379`; staging returned `release="0.1.0"` | Success |
+| Executable forward deploy | `c5b5684` | CI run `26694420857`; Staging Deploy run `26694420871`; staging returned `release="0.2.0"` | Success |
+| Executable rollback deploy | `b17c43d586ba3f608668992e5f8e34caa8e635d7` | Staging Deploy workflow dispatch run `26694480117`; staging returned `release="0.1.0"` | Success |
 
 ## Verification Commands
 
@@ -21,11 +26,11 @@ npm test
 npm run build
 npm run verify:dist
 gh run list --limit 12 --repo Volynskiy-Business/PAPERCLIP-PROD-DRYRUN-001
+curl -fsS http://206.189.62.186:45129/healthz
 ```
 
 ## Gate Result
 
-Hosted CI, staging deployment, and rollback proof exist for the synthetic dry-run product.
+Hosted CI, staging deployment, staged auth/mutation smoke tests, and rollback proof exist for the executable recruiting-prospect dry-run product.
 
 This evidence satisfies the previously blocked hosted-delivery portion of `PAPERCLIP-PROD-DRYRUN-001`, but it does not by itself prove company-wide autonomous readiness. Company-wide readiness still requires team staffing, portfolio orchestration, monitoring, and final CEO gate review.
-
