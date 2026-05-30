@@ -36,11 +36,6 @@ jobs:
           else
             echo "ref=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
           fi
-          if [ -n "${{ github.event.inputs.expected_release }}" ]; then
-            echo "expected_release=${{ github.event.inputs.expected_release }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "expected_release=0.1.0" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -54,6 +49,15 @@ jobs:
 
       - name: Install
         run: npm ci
+
+      - name: Resolve expected release
+        id: release
+        run: |
+          if [ -n "${{ github.event.inputs.expected_release }}" ]; then
+            echo "expected_release=${{ github.event.inputs.expected_release }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "expected_release=$(node -p \"require('./package.json').version\")" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Test
         run: npm test
@@ -84,7 +88,7 @@ jobs:
       - name: Activate release
         run: |
           ssh -i ~/.ssh/dryrun_deploy_key "${{ secrets.DRYRUN_SSH_USER }}@${{ secrets.DRYRUN_SSH_HOST }}" \
-            "DEPLOY_REF='${{ steps.ref.outputs.ref }}' EXPECTED_RELEASE='${{ steps.ref.outputs.expected_release }}' DRYRUN_API_TOKEN='${{ secrets.DRYRUN_API_TOKEN }}' bash -s" <<'REMOTE'
+            "DEPLOY_REF='${{ steps.ref.outputs.ref }}' EXPECTED_RELEASE='${{ steps.release.outputs.expected_release }}' DRYRUN_API_TOKEN='${{ secrets.DRYRUN_API_TOKEN }}' bash -s" <<'REMOTE'
           set -euo pipefail
           APP_ROOT=/opt/paperclip-prod-dryrun-001
           RELEASE_DIR="$APP_ROOT/releases/$DEPLOY_REF"
@@ -125,7 +129,7 @@ jobs:
         env:
           STAGING_URL: ${{ secrets.DRYRUN_STAGING_URL }}
           DRYRUN_API_TOKEN: ${{ secrets.DRYRUN_API_TOKEN }}
-          EXPECTED_RELEASE: ${{ steps.ref.outputs.expected_release }}
+          EXPECTED_RELEASE: ${{ steps.release.outputs.expected_release }}
         run: |
           set -euo pipefail
           curl -fsS "$STAGING_URL/healthz" | tee /tmp/health.json
