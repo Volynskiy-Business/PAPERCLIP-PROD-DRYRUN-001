@@ -1,0 +1,36 @@
+name: Rollback Proof
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_release:
+        description: Expected release value after rollback
+        required: true
+        default: 0.1.0
+
+jobs:
+  verify-rollback-state:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify expected rollback release
+        run: |
+          grep "data-release=\"${{ inputs.expected_release }}\"" dist/index.html
+          npm run verify:dist
+
