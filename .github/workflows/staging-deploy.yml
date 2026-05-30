@@ -56,7 +56,9 @@ jobs:
           if [ -n "${{ github.event.inputs.expected_release }}" ]; then
             echo "expected_release=${{ github.event.inputs.expected_release }}" >> "$GITHUB_OUTPUT"
           else
-            echo "expected_release=$(node -p 'JSON.parse(require(\"fs\").readFileSync(\"package.json\",\"utf8\")).version')" >> "$GITHUB_OUTPUT"
+            version=$(node -e "const fs = require('fs'); process.stdout.write(JSON.parse(fs.readFileSync('package.json', 'utf8')).version)")
+            test -n "$version"
+            echo "expected_release=$version" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Test
