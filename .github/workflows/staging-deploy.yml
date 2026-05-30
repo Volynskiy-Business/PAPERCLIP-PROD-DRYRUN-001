@@ -56,7 +56,7 @@ jobs:
           if [ -n "${{ github.event.inputs.expected_release }}" ]; then
             echo "expected_release=${{ github.event.inputs.expected_release }}" >> "$GITHUB_OUTPUT"
           else
-            echo "expected_release=$(node -p \"require('./package.json').version\")" >> "$GITHUB_OUTPUT"
+            echo "expected_release=$(node -p 'JSON.parse(require(\"fs\").readFileSync(\"package.json\",\"utf8\")).version')" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Test
