@@ -17,9 +17,8 @@ if (!html.includes("PAPERCLIP-PROD-DRYRUN-001")) {
   throw new Error("Missing dry-run identifier in built HTML");
 }
 
-if (!html.includes('data-release="0.1.0"')) {
+if (!html.includes('data-release="0.2.0"')) {
   throw new Error("Built HTML does not expose expected release version");
 }
 
 console.log("Build artifact verification passed");
-
